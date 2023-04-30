@@ -35,7 +35,7 @@ struct options ReadFlags(int argc, char ** argv)
 {
     struct options ret = { // defaults
         .type = TCP,
-        .port = "502",
+        .port = "1502",
         .nb_clients = 10,
         .nb_bits = MODBUS_MAX_READ_BITS,
         .nb_wbits = MODBUS_MAX_WRITE_BITS,
@@ -58,29 +58,32 @@ void* HandleConnection(void* arg)
     #else 
         socklen_t name_len;
     #endif
-    if (getpeername(modbus_get_socket(client), &client_addr, &name_len) == 0){
-        printf("new connection from: %s", client_addr.sa_data);
-    } else {
-        // error getting name
-        printf("could not fetch name of socket %d \n", modbus_get_socket(client));
+
+    if (getpeername(modbus_get_socket(client), &client_addr, &name_len) != 0)
+    { // error getting name
+        fprintf(stderr, "could not fetch name of socket %d \n", modbus_get_socket(client));
         return NULL;
     }
-    while (1){
+    printf("new connection from: %s\n", client_addr.sa_data);
+
+    while (1)
+    {
         uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
         int rx_count = -1;
         int status = -1;
 
         rx_count = modbus_receive(client, query);
-        if (rx_count > 0){
+        if (rx_count > 0)
+        {
             pthread_mutex_lock(&db_access);
             status = modbus_reply(client, query, rx_count, db);
             pthread_mutex_unlock(&db_access);
             if (status != 0){
-                printf("error %d replying to query from %s: %s", errno, client_addr.sa_data, modbus_strerror(errno));
+                fprintf(stderr, "error %d replying to query from %s: %s\n", errno, client_addr.sa_data, modbus_strerror(errno));
             }
         } else if (rx_count < 0){
             // error or closed
-            printf("%s disconnected", client_addr.sa_data);
+            printf("%s disconnected\n", client_addr.sa_data);
             return NULL; 
         } else {
             // empty query
@@ -96,7 +99,8 @@ int main(int argc, char** argv)
     int sock = -1;
     int status = -1;
 
-    switch (opt.type){
+    switch (opt.type)
+    {
     case TCP :
         server = modbus_new_tcp(NULL, atoi(opt.port));
         sock = modbus_tcp_listen(server, 1);
@@ -114,25 +118,32 @@ int main(int argc, char** argv)
         , opt.nb_regs, opt.nb_wregs
     );    
 
-    while(1){
+    printf("Setup done.\n");
+    while(1)
+    {
         int client_sock = -1;
         modbus_t* client = NULL;
         pthread_t* thread = NULL;
 
         switch (opt.type){
         case TCP :
-            client = modbus_new_tcp(NULL, atoi(opt.port));
             client_sock = modbus_tcp_accept(server, &sock);
+            client = modbus_new_tcp(NULL, atoi(opt.port));
             break;
         case TCP_PI :
-            client = modbus_new_tcp_pi(NULL, opt.port);
             client_sock = modbus_tcp_pi_accept(server, &sock);
+            client = modbus_new_tcp_pi(NULL, opt.port);
             break;
         default :
+            fprintf(stderr, "RTU not implemented.\n");
             return 1;
         }
         status = modbus_set_socket(client, client_sock);
+        if (status == -1)
+        {
+            fprintf(stderr, "%d: Something went wrong! -> %s\n", errno, modbus_strerror(errno));
+        }
         pthread_create(thread, NULL, HandleConnection, (void*) client); // casting to void* is dangerous
-        pthread_detach(*thread);
+        pthread_detach(*thread); // I hope the thread is killed automatically if this "main" thread is killed...
     }
 };
