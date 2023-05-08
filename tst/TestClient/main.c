@@ -72,7 +72,7 @@ int main(int argc, char** argv)
                 fprintf(stderr, "ERROR %d reading register: %s\n", errno, modbus_strerror(errno));
                 continue;
             }
-            printf("%d", value);
+            printf("\t %d\n", value);
         } 
         else if (read_write == 'w')
         {
