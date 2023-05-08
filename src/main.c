@@ -31,7 +31,6 @@ struct options
     int nb_wbits;
     int nb_regs;
     int nb_wregs;
-    size_t max_clients;
 };
 
 struct options ReadFlags(int argc, char ** argv)
@@ -44,7 +43,6 @@ struct options ReadFlags(int argc, char ** argv)
         .nb_wbits = MODBUS_MAX_WRITE_BITS,
         .nb_regs = MODBUS_MAX_READ_REGISTERS,
         .nb_wregs = MODBUS_MAX_WRITE_REGISTERS,
-        .max_clients = 5
     };
     // TODO
 
@@ -138,7 +136,6 @@ int main(int argc, char** argv)
     modbus_t* server = NULL;
     int sock = -1;
     int status = -1;
-    pthread_t clients[opt.max_clients];
 
     switch (opt.type)
     {
@@ -159,17 +156,13 @@ int main(int argc, char** argv)
         , opt.nb_regs, opt.nb_wregs
     );    
 
-    for(int c = 0; c < opt.max_clients; c++)
-    {
-        clients[c] = NULL;
-    }
-
 
     printf("Setup done.\n");
     while(1)
     {
         int client_sock = -1;
         modbus_t* client = NULL;
+        pthread_t thread = NULL;
 
         switch (opt.type){
         case TCP :
@@ -190,23 +183,8 @@ int main(int argc, char** argv)
             fprintf(stderr, "%d: Something went wrong! -> %s\n", errno, modbus_strerror(errno));
         }
 
-        for(size_t c = 0; c < opt.max_clients; c++)
-        {
-            // find a null or finished client thread
-            if (
-                clients[c] != NULL 
-                & pthread_kill(clients[c], 0) != 0
-            ){
-                if (c == opt.max_clients -1)
-                {
-                    fprintf(stderr, "No available client threads.\n");
-                    // TODO: some handling of the client that will now have to be disconnected.
-                }
-                continue;
-            }
-            // casting to void* is dangerous ?
-            pthread_create(&clients[c], NULL, &HandleConnection, (void*) client); 
-            break;
-        }
+        // casting to void* is dangerous ?
+        pthread_create(&thread, NULL, &HandleConnection, (void*) client); 
+        pthread_detach(thread); // I hope the thread still gets stopped when main() exits...
     }
 };
